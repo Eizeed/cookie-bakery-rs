@@ -2,7 +2,7 @@ use std::{borrow::Cow, time::Duration};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-use crate::{Cookie, cookie::CookieStr, expires::Expires, same_site::SameSite};
+use crate::{Cookie, cookie::CookieStr, expires::Expiration, same_site::SameSite};
 
 const FMT1: &'static str = "%a, %d %b %Y %H:%M:%S GMT";
 const FMT2: &'static str = "%A, %d-%b-%y %H:%M:%S GMT";
@@ -57,7 +57,7 @@ fn parse_inner<'a>(s: &str) -> Result<Cookie<'a>, ParseError> {
 
         match (key, val) {
             ("Expires", Some(expires)) => {
-                cookie.expires = Some(Expires::DateTime(parse_date_with_all_formats(expires)?))
+                cookie.expires = Some(Expiration::DateTime(parse_date_all_formats(expires)?))
             }
             ("Max-Age", Some(max_age)) => {
                 cookie.max_age = {
@@ -106,33 +106,22 @@ fn parse_inner<'a>(s: &str) -> Result<Cookie<'a>, ParseError> {
     Ok(cookie)
 }
 
-fn parse_date(str: &str) -> Result<DateTime<Utc>, ParseError> {
-    let date = str
-        .split("GMT")
-        .next()
-        .ok_or(ParseError::InvalidDate)?
-        .trim();
-
-    let date = NaiveDateTime::parse_from_str(date, "%a, %d %b %Y %H:%M:%S")
-        .map_err(|_| ParseError::InvalidDate)?;
+fn parse_date(str: &str, fmt: &str) -> Result<DateTime<Utc>, ParseError> {
+    let date =
+        NaiveDateTime::parse_from_str(str.trim(), fmt).map_err(|_| ParseError::InvalidDate)?;
 
     Ok(DateTime::from_naive_utc_and_offset(date, Utc))
 }
 
-fn parse_date_with_all_formats(str: &str) -> Result<DateTime<Utc>, ParseError> {
-    let date = str
-        .split("GMT")
-        .next()
-        .ok_or(ParseError::InvalidDate)?
-        .trim();
-
-    let date = NaiveDateTime::parse_from_str(date, FMT1)
-        .or_else(|_| NaiveDateTime::parse_from_str(date, FMT2))
-        .or_else(|_| NaiveDateTime::parse_from_str(date, FMT3))
-        .or_else(|_| NaiveDateTime::parse_from_str(date, FMT4))
+fn parse_date_all_formats(str: &str) -> Result<DateTime<Utc>, ParseError> {
+    let date = str.trim();
+    let date = parse_date(date, FMT1)
+        .or_else(|_| parse_date(date, FMT2))
+        .or_else(|_| parse_date(date, FMT3))
+        .or_else(|_| parse_date(date, FMT4))
         .map_err(|_| ParseError::InvalidDate);
 
-    date.map(|d| DateTime::from_naive_utc_and_offset(d, Utc))
+    date
 }
 
 #[derive(Debug, Clone)]
@@ -157,9 +146,9 @@ mod tests {
         let date2 = "Mon, 14 Jun 2027 12:00:00 GMT";
         let date3 = "Thu, 01 Jan 2026 23:59:59 GMT";
 
-        let res1 = parse_date(date1).unwrap();
-        let res2 = parse_date(date2).unwrap();
-        let res3 = parse_date(date3).unwrap();
+        let res1 = parse_date_all_formats(date1).unwrap();
+        let res2 = parse_date_all_formats(date2).unwrap();
+        let res3 = parse_date_all_formats(date3).unwrap();
 
         assert_eq!(
             res1,
@@ -182,18 +171,18 @@ mod tests {
         let invalid_tz = "Thu, 01 Jan 2026 23:59:59 UTC";
         let invalid_time = "Thu, 01 Jan 2026 24:59:59 GMT";
 
-        assert!(parse_date(invalid_day_of_week).is_err());
-        assert!(parse_date(invalid_format).is_err());
-        assert!(parse_date(invalid_tz).is_err());
-        assert!(parse_date(invalid_time).is_err());
+        assert!(parse_date_all_formats(invalid_day_of_week).is_err());
+        assert!(parse_date_all_formats(invalid_format).is_err());
+        assert!(parse_date_all_formats(invalid_tz).is_err());
+        assert!(parse_date_all_formats(invalid_time).is_err());
     }
 
     #[test]
     fn cookie() {
         let cookie = "sessionId=abc123; Expires=Tue, 21 Oct 2025 07:28:00 GMT; Max-Age=3600; Domain=example.com; Path=/; Secure; HttpOnly; SameSite=Strict";
-        let cookie = Cookie::try_from(cookie).unwrap();
+        let cookie = Cookie::parse(cookie).unwrap();
         let cookie = "authToken=xyz789; Expires=Fri, 01 Jan 2027 12:00:00 GMT; Max-Age=7200; Domain=example.org; Path=/account; Secure; HttpOnly; SameSite=Lax";
-        let cookie = Cookie::try_from(cookie).unwrap();
+        let cookie = Cookie::parse(cookie).unwrap();
         println!("{cookie:#?}");
         println!("{cookie}");
     }

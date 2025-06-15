@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{
     cookie::{Cookie, CookieStr},
-    expires::Expires,
+    expires::Expiration,
     same_site::SameSite,
 };
 
@@ -24,7 +24,7 @@ impl<'a> CookieBuilder<'a> {
         })
     }
 
-    pub fn expires(mut self, expires: Expires) -> Self {
+    pub fn expires(mut self, expires: Expiration) -> Self {
         self.0.set_expires(expires);
         self
     }
@@ -45,17 +45,17 @@ impl<'a> CookieBuilder<'a> {
     }
 
     pub fn secure(mut self, secure: bool) -> Self {
-        self.0.set_secure(path);
+        self.0.set_secure(secure);
         self
     }
 
     pub fn http_only(mut self, http_only: bool) -> Self {
-        self.0.set_http_only(path);
+        self.0.set_http_only(http_only);
         self
     }
 
     pub fn same_site(mut self, same_site: SameSite) -> Self {
-        self.0.set_same_site(path);
+        self.0.set_same_site(same_site);
         self
     }
 
