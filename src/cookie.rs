@@ -39,6 +39,24 @@ impl<'a> CookieStr<'a> {
             CookieStr::Concrete(ref concrete_str) => &*concrete_str,
         }
     }
+
+    fn to_raw_str<'s, 'b: 's>(&'s self, source: &'s Cow<'b, str>) -> Option<&'s str> {
+        match *self {
+            CookieStr::Indexed(i, j) => match source {
+                Cow::Borrowed(s) => Some(&s[i..j]),
+                Cow::Owned(_) => None,
+            },
+            CookieStr::Concrete(_) => None,
+        }
+    }
+
+    fn into_owned(self) -> CookieStr<'static> {
+        match self {
+            CookieStr::Indexed(a, b) => CookieStr::Indexed(a, b),
+            CookieStr::Concrete(Cow::Owned(c)) => CookieStr::Concrete(Cow::Owned(c)),
+            CookieStr::Concrete(Cow::Borrowed(c)) => CookieStr::Concrete(Cow::Owned(c.into())),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -68,8 +86,20 @@ impl<'a> Cookie<'a> {
         self.name.as_str(self.cookie_string.as_ref())
     }
 
+    pub fn name_raw(&self) -> Option<&str> {
+        self.cookie_string
+            .as_ref()
+            .and_then(|s| self.name.to_raw_str(s))
+    }
+
     pub fn value(&self) -> &str {
         self.val.as_str(self.cookie_string.as_ref())
+    }
+
+    pub fn value_raw(&self) -> Option<&str> {
+        self.cookie_string
+            .as_ref()
+            .and_then(|s| self.val.to_raw_str(s))
     }
 
     pub fn name_value(&self) -> (&str, &str) {
@@ -86,8 +116,21 @@ impl<'a> Cookie<'a> {
 
     pub fn domain(&self) -> Option<&str> {
         match &self.domain {
-            Some(domain) => Some(domain.as_str(self.cookie_string.as_ref())),
+            Some(domain) => {
+                let domain = domain.as_str(self.cookie_string.as_ref());
+                domain.strip_prefix(".").or(Some(domain))
+            }
             None => None,
+        }
+    }
+
+    pub fn domain_raw(&self) -> Option<&str> {
+        match (self.domain.as_ref(), self.cookie_string.as_ref()) {
+            (Some(domain), Some(source)) => match domain.to_raw_str(source) {
+                Some(domain) => domain.strip_prefix(".").or(Some(domain)),
+                None => None,
+            },
+            _ => None,
         }
     }
 
@@ -95,6 +138,13 @@ impl<'a> Cookie<'a> {
         match &self.path {
             Some(path) => Some(path.as_str(self.cookie_string.as_ref())),
             None => None,
+        }
+    }
+
+    pub fn path_raw(&self) -> Option<&str> {
+        match (self.path.as_ref(), self.cookie_string.as_ref()) {
+            (Some(path), Some(source)) => path.to_raw_str(source),
+            _ => None,
         }
     }
 
@@ -137,6 +187,21 @@ impl<'a> Cookie<'a> {
     pub fn set_same_site(&mut self, val: SameSite) -> &mut Self {
         self.same_site = Some(val);
         self
+    }
+
+    pub fn into_owned(self) -> Cookie<'static> {
+        Cookie {
+            cookie_string: self.cookie_string.map(|s| s.into_owned().into()),
+            name: self.name.into_owned(),
+            val: self.val.into_owned(),
+            expires: self.expires,
+            max_age: self.max_age,
+            domain: self.domain.map(|s| s.into_owned().into()),
+            path: self.path.map(|s| s.into_owned().into()),
+            secure: self.secure,
+            http_only: self.http_only,
+            same_site: self.same_site,
+        }
     }
 }
 
