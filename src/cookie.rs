@@ -1,6 +1,8 @@
 use std::time::Duration;
 use std::{borrow::Cow, fmt::Display};
 
+use chrono::{DateTime, Days, Utc};
+
 use crate::parse::{ParseError, parse_cookie};
 use crate::{builder::CookieBuilder, expires::Expiration, same_site::SameSite};
 
@@ -160,32 +162,117 @@ impl<'a> Cookie<'a> {
         self.same_site
     }
 
-    pub fn set_expires(&mut self, val: Expiration) -> &mut Self {
-        self.expires = Some(val);
+    pub fn set_name<S>(&mut self, name: S) -> &mut Self
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.name = CookieStr::Concrete(name.into());
         self
     }
-    pub fn set_max_age(&mut self, val: Duration) -> &mut Self {
-        self.max_age = Some(val);
+
+    pub fn set_value<S>(&mut self, val: S) -> &mut Self
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.val = CookieStr::Concrete(val.into());
         self
     }
-    pub fn set_domain(&mut self, val: &'a str) -> &mut Self {
+
+    pub fn set_expires<T>(&mut self, val: T) -> &mut Self
+    where
+        T: Into<Option<Expiration>>,
+    {
+        self.expires = val.into();
+        self
+    }
+    pub fn set_max_age<T>(&mut self, val: T) -> &mut Self
+    where
+        T: Into<Option<Duration>>,
+    {
+        self.max_age = val.into();
+        self
+    }
+
+    pub fn unset_expiures(&mut self) -> &mut Self {
+        self.expires = None;
+        self
+    }
+
+    pub fn set_domain<S>(&mut self, val: S) -> &mut Self
+    where
+        S: Into<Cow<'a, str>>,
+    {
         self.domain = Some(CookieStr::Concrete(val.into()));
         self
     }
-    pub fn set_path(&mut self, val: &'a str) -> &mut Self {
+
+    pub fn unset_domain(&mut self) -> &mut Self {
+        self.domain = None;
+        self
+    }
+
+    pub fn set_path<S>(&mut self, val: S) -> &mut Self
+    where
+        S: Into<Cow<'a, str>>,
+    {
         self.path = Some(CookieStr::Concrete(val.into()));
         self
     }
-    pub fn set_secure(&mut self, val: bool) -> &mut Self {
-        self.secure = Some(val);
+
+    pub fn unset_path(&mut self) -> &mut Self {
+        self.path = None;
         self
     }
-    pub fn set_http_only(&mut self, val: bool) -> &mut Self {
-        self.http_only = Some(val);
+
+    pub fn set_secure<T>(&mut self, val: T) -> &mut Self
+    where
+        T: Into<Option<bool>>,
+    {
+        self.secure = val.into();
         self
     }
-    pub fn set_same_site(&mut self, val: SameSite) -> &mut Self {
-        self.same_site = Some(val);
+
+    pub fn set_http_only<T>(&mut self, val: T) -> &mut Self
+    where
+        T: Into<Option<bool>>,
+    {
+        self.http_only = val.into();
+        self
+    }
+
+    pub fn set_same_site<T>(&mut self, val: T) -> &mut Self
+    where
+        T: Into<Option<SameSite>>,
+    {
+        self.same_site = val.into();
+        self
+    }
+
+    pub fn make_permanent(&mut self) -> &mut Self {
+        let twenty_years = 365 * 20;
+        self.set_max_age(Duration::from_secs(60 * 60 * 24 * twenty_years));
+
+        self.set_expires(Expiration::DateTime(
+            Utc::now()
+                // This seems kinda weird
+                // I'm not sure if it's correct to use
+                // DateTime::<Utc>::MAX_UTC here
+                .checked_add_days(Days::new(twenty_years))
+                .unwrap_or(DateTime::<Utc>::MAX_UTC),
+        ));
+
+        self
+    }
+
+    pub fn make_removal(&mut self) -> &mut Self {
+        self.set_value("");
+        self.set_max_age(Duration::from_secs(0));
+        self.set_expires(Expiration::DateTime(
+            Utc::now()
+                .checked_sub_days(Days::new(365))
+                .expect("Must be more that DateTime::<Utc>::MIN_UTC"),
+        ));
+
         self
     }
 
